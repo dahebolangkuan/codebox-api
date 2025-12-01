@@ -1,0 +1,398 @@
+openapi: 3.0.3
+info:
+  title: GoBox API
+  description: |
+    GoBox is a high-performance sandbox code execution API for LLM applications.
+    
+    It provides secure, isolated environments for running Python and Bash code.
+  version: 1.0.0
+  contact:
+    name: GoBox Team
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8069
+    description: Local development server
+  - url: https://api.gobox.io
+    description: Production server
+
+tags:
+  - name: Execution
+    description: Code execution operations
+  - name: Files
+    description: File management operations
+  - name: Packages
+    description: Package installation
+  - name: System
+    description: System and health operations
+
+paths:
+  /:
+    get:
+      summary: Health check
+      description: Returns the health status of the service
+      tags:
+        - System
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /health:
+    get:
+      summary: Health check
+      description: Returns the health status of the service
+      tags:
+        - System
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /exec:
+    post:
+      summary: Execute code
+      description: |
+        Execute Python or Bash code in a sandboxed environment.
+        
+        The response is streamed using JSONL (JSON Lines) format,
+        where each line is a JSON object representing an output chunk.
+      tags:
+        - Execution
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecRequest'
+            examples:
+              python:
+                summary: Python code
+                value:
+                  code: "print('Hello, World!')"
+                  kernel: python
+              bash:
+                summary: Bash command
+                value:
+                  code: "echo 'Hello, World!'"
+                  kernel: bash
+              timeout:
+                summary: With timeout
+                value:
+                  code: "import time; time.sleep(5); print('Done')"
+                  kernel: python
+                  timeout: 10
+      responses:
+        '200':
+          description: Code executed successfully (streaming JSONL response)
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: '#/components/schemas/ExecChunk'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /files:
+    get:
+      summary: List files
+      description: List all files in the sandbox working directory
+      tags:
+        - Files
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of files
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FileInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /files/upload:
+    post:
+      summary: Upload files
+      description: Upload one or more files to the sandbox environment
+      tags:
+        - Files
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to upload
+      responses:
+        '200':
+          description: Files uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploaded:
+                    type: integer
+                    description: Number of files uploaded
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /files/download/{filename}:
+    get:
+      summary: Download file
+      description: Download a file from the sandbox environment
+      tags:
+        - Files
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          description: Name of the file to download
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /install:
+    post:
+      summary: Install packages
+      description: Install Python packages using pip
+      tags:
+        - Packages
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstallRequest'
+            example:
+              packages:
+                - numpy
+                - pandas
+      responses:
+        '200':
+          description: Packages installed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  installed:
+                    type: array
+                    items:
+                      type: string
+                    description: List of installed packages
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /restart:
+    post:
+      summary: Restart sandbox
+      description: Restart the sandbox execution environment
+      tags:
+        - System
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Sandbox restarted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: restarted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+
+  schemas:
+    ExecRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          description: Code to execute
+        kernel:
+          type: string
+          enum: [python, bash]
+          default: python
+          description: Execution kernel
+        timeout:
+          type: integer
+          minimum: 1
+          maximum: 600
+          description: Execution timeout in seconds
+        cwd:
+          type: string
+          description: Working directory
+
+    ExecChunk:
+      type: object
+      required:
+        - type
+        - content
+      properties:
+        type:
+          type: string
+          enum: [txt, img, err]
+          description: |
+            Chunk type:
+            - txt: Text output
+            - img: Base64-encoded image
+            - err: Error message
+        content:
+          type: string
+          description: Chunk content
+
+    FileInfo:
+      type: object
+      properties:
+        path:
+          type: string
+          description: File path
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes
+        is_dir:
+          type: boolean
+          description: Whether this is a directory
+
+    InstallRequest:
+      type: object
+      required:
+        - packages
+      properties:
+        packages:
+          type: array
+          items:
+            type: string
+          description: List of packages to install
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, error]
+          description: Health status
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of the health check
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Error code
+            message:
+              type: string
+              description: Error message
+            details:
+              type: object
+              additionalProperties: true
+              description: Additional error details
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INVALID_REQUEST
+              message: Invalid request body
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Missing or invalid authentication
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: An internal error occurred

@@ -1,0 +1,38 @@
+# Executor image for running code inside containers
+# This image provides the Python execution environment
+
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install common Python packages
+RUN pip install --no-cache-dir \
+    numpy \
+    pandas \
+    matplotlib \
+    pillow \
+    requests \
+    jupyter \
+    ipykernel
+
+# Create working directory
+WORKDIR /app
+
+# Create non-root user for security
+RUN useradd -m -s /bin/bash executor
+RUN chown -R executor:executor /app
+
+# Switch to non-root user
+USER executor
+
+# Set Python environment
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV MPLBACKEND=Agg
+
+# Default command
+CMD ["python"]
