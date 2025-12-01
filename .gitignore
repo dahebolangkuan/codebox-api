@@ -9,3 +9,5 @@ site
 .python-version
 requirements-dev.lock
 .aider*
+
+gobox-dev/gobox/bin

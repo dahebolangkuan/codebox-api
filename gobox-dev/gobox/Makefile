@@ -1,4 +1,4 @@
-.PHONY: all build test lint clean docker run help
+.PHONY: all build build-cli build-server install test test-short test-cover lint fmt vet tidy clean docker docker-push run-server run-cli deps update-deps generate check release help
 
 # Go parameters
 GOCMD=go
@@ -17,6 +17,7 @@ SERVER_BINARY=gobox-server
 # Build directories
 BUILD_DIR=bin
 DOCKER_IMAGE=gobox
+EXECUTOR_IMAGE=gobox-executor
 
 # Version info
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -35,8 +36,8 @@ help:
 	@echo "Targets:"
 	@sed -n 's/^##//p' $(MAKEFILE_LIST) | column -t -s ':' |  sed -e 's/^/ /'
 
-## build: Build all binaries
-build: build-cli build-server
+## build: Build all binaries and executor image
+build: build-executor build-cli build-server
 
 ## build-cli: Build the CLI binary
 build-cli:
@@ -99,6 +100,20 @@ clean:
 	$(GOCLEAN)
 	rm -rf $(BUILD_DIR)
 	rm -f coverage.out coverage.html
+
+## build-executor: Build the executor Docker image
+build-executor:
+	@echo "Building executor image $(EXECUTOR_IMAGE)..."
+	@if ! docker images $(EXECUTOR_IMAGE):latest -q | grep -q .; then \
+		docker build -t $(EXECUTOR_IMAGE):latest -f docker/Dockerfile.executor .; \
+	else \
+		echo "Executor image $(EXECUTOR_IMAGE):latest already exists, skipping build."; \
+	fi
+
+## build-executor-force: Force rebuild the executor Docker image
+build-executor-force:
+	@echo "Force building executor image $(EXECUTOR_IMAGE)..."
+	docker build -t $(EXECUTOR_IMAGE):latest -f docker/Dockerfile.executor .
 
 ## docker: Build Docker image
 docker:

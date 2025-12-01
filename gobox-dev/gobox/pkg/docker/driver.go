@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
@@ -412,12 +412,12 @@ func (d *Driver) createContainer(ctx context.Context) (*Container, error) {
 
 	// Create container configuration
 	containerConfig := &container.Config{
-		Image:     d.config.Image,
-		Tty:       true,
-		OpenStdin: true,
+		Image:      d.config.Image,
+		Tty:        true,
+		OpenStdin:  true,
 		WorkingDir: d.config.WorkDir,
-		Env:       mapToEnvSlice(d.config.Env),
-		Labels:    d.config.Labels,
+		Env:        mapToEnvSlice(d.config.Env),
+		Labels:     d.config.Labels,
 		ExposedPorts: nat.PortSet{
 			"8888/tcp": struct{}{},
 		},
@@ -450,16 +450,16 @@ func (d *Driver) createContainer(ctx context.Context) (*Container, error) {
 	}
 
 	// Start the container
-	if err := d.cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+	if err := d.cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		// Clean up on failure
-		d.cli.ContainerRemove(ctx, resp.ID, types.ContainerRemoveOptions{Force: true})
+		d.cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
 		return nil, gobox.NewDriverError("docker", "start_container", err)
 	}
 
 	// Get the assigned port
 	inspect, err := d.cli.ContainerInspect(ctx, resp.ID)
 	if err != nil {
-		d.cli.ContainerRemove(ctx, resp.ID, types.ContainerRemoveOptions{Force: true})
+		d.cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
 		return nil, gobox.NewDriverError("docker", "inspect_container", err)
 	}
 
@@ -470,7 +470,7 @@ func (d *Driver) createContainer(ctx context.Context) (*Container, error) {
 
 	// Wait for container to be ready
 	if err := d.waitForContainerReady(ctx, resp.ID); err != nil {
-		d.cli.ContainerRemove(ctx, resp.ID, types.ContainerRemoveOptions{Force: true})
+		d.cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
 		return nil, err
 	}
 
@@ -487,7 +487,7 @@ func (d *Driver) createContainer(ctx context.Context) (*Container, error) {
 // ensureImage ensures the Docker image is available locally.
 func (d *Driver) ensureImage(ctx context.Context) error {
 	// Check if image exists locally
-	images, err := d.cli.ImageList(ctx, types.ImageListOptions{
+	images, err := d.cli.ImageList(ctx, image.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("reference", d.config.Image)),
 	})
 	if err != nil {
@@ -499,7 +499,7 @@ func (d *Driver) ensureImage(ctx context.Context) error {
 	}
 
 	// Pull the image
-	out, err := d.cli.ImagePull(ctx, d.config.Image, types.ImagePullOptions{})
+	out, err := d.cli.ImagePull(ctx, d.config.Image, image.PullOptions{})
 	if err != nil {
 		return gobox.NewDriverError("docker", "pull_image", err)
 	}
@@ -550,7 +550,7 @@ func (d *Driver) execInContainer(ctx context.Context, containerID, code, kernel 
 		return nil, gobox.ErrInvalidKernel
 	}
 
-	execConfig := types.ExecConfig{
+	execConfig := container.ExecOptions{
 		Cmd:          cmd,
 		AttachStdout: true,
 		AttachStderr: true,
@@ -562,7 +562,7 @@ func (d *Driver) execInContainer(ctx context.Context, containerID, code, kernel 
 		return nil, gobox.NewDriverError("docker", "exec_create", err)
 	}
 
-	resp, err := d.cli.ContainerExecAttach(ctx, execID.ID, types.ExecStartCheck{})
+	resp, err := d.cli.ContainerExecAttach(ctx, execID.ID, container.ExecStartOptions{})
 	if err != nil {
 		return nil, gobox.NewDriverError("docker", "exec_attach", err)
 	}
@@ -666,7 +666,7 @@ func (d *Driver) uploadToContainer(ctx context.Context, containerID string, file
 	}
 
 	// Copy to container
-	err = d.cli.CopyToContainer(ctx, containerID, d.config.WorkDir, &buf, types.CopyToContainerOptions{})
+	err = d.cli.CopyToContainer(ctx, containerID, d.config.WorkDir, &buf, container.CopyToContainerOptions{})
 	if err != nil {
 		return gobox.NewDriverError("docker", "copy_to_container", err)
 	}
@@ -749,7 +749,7 @@ func (d *Driver) stopContainer(ctx context.Context, containerID string) error {
 
 // destroyContainer stops and removes a container.
 func (d *Driver) destroyContainer(ctx context.Context, containerID string) error {
-	return d.cli.ContainerRemove(ctx, containerID, types.ContainerRemoveOptions{Force: true})
+	return d.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true})
 }
 
 // getContainerStats retrieves resource usage statistics.

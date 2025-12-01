@@ -57,7 +57,7 @@ type Config struct {
 const (
 	DefaultBaseURL        = "https://codeboxapi.com/api/v2"
 	DefaultFactoryID      = "default"
-	DefaultDockerImage    = "shroominic/codebox:latest"
+	DefaultDockerImage    = "gobox-executor:latest"
 	DefaultDockerTimeout  = 15
 	DefaultDockerNetwork  = "bridge"
 	DefaultPoolMinSize    = 2
