@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"runtime/debug"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -151,17 +153,20 @@ func newRateLimiter(rps, burstSize int) *rateLimiter {
 	}
 
 	// Refill tokens periodically
-	go func() {
-		ticker := time.NewTicker(time.Second / time.Duration(rps))
-		defer ticker.Stop()
+	// Ensure rps > 0 to avoid division by zero
+	if rps > 0 {
+		go func() {
+			ticker := time.NewTicker(time.Second / time.Duration(rps))
+			defer ticker.Stop()
 
-		for range ticker.C {
-			select {
-			case rl.tokens <- struct{}{}:
-			default:
+			for range ticker.C {
+				select {
+				case rl.tokens <- struct{}{}:
+				default:
+				}
 			}
-		}
-	}()
+		}()
+	}
 
 	return rl
 }
@@ -221,8 +226,13 @@ type contextKey string
 
 const requestIDKey contextKey = "request_id"
 
+// requestCounter is used to generate unique request IDs
+var requestCounter uint64
+
 func generateRequestID() string {
-	return time.Now().Format("20060102150405.000000")
+	// Use atomic counter combined with timestamp for uniqueness
+	counter := atomic.AddUint64(&requestCounter, 1)
+	return fmt.Sprintf("%s-%d", time.Now().Format("20060102150405"), counter)
 }
 
 // GetRequestID retrieves the request ID from context.

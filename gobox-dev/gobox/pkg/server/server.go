@@ -229,7 +229,9 @@ type ErrorDetail struct {
 func (s *Server) sendJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		s.logger.Error("Failed to encode JSON response", zap.Error(err))
+	}
 }
 
 func (s *Server) sendError(w http.ResponseWriter, status int, code, message string) {
@@ -269,7 +271,10 @@ func (s *Server) sendStreamingResponse(w http.ResponseWriter, chunkChan <-chan g
 							Type:    gobox.ChunkTypeError,
 							Content: err.Error(),
 						})
-						w.Write(data)
+						if _, writeErr := w.Write(data); writeErr != nil {
+							s.logger.Error("Failed to write error chunk", zap.Error(writeErr))
+							return
+						}
 						w.Write([]byte("\n"))
 						flusher.Flush()
 					}
@@ -284,8 +289,14 @@ func (s *Server) sendStreamingResponse(w http.ResponseWriter, chunkChan <-chan g
 				continue
 			}
 
-			w.Write(data)
-			w.Write([]byte("\n"))
+			if _, writeErr := w.Write(data); writeErr != nil {
+				s.logger.Error("Failed to write chunk", zap.Error(writeErr))
+				return
+			}
+			if _, writeErr := w.Write([]byte("\n")); writeErr != nil {
+				s.logger.Error("Failed to write newline", zap.Error(writeErr))
+				return
+			}
 			flusher.Flush()
 
 		case err := <-errChan:

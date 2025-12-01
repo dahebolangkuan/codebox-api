@@ -608,26 +608,54 @@ func (d *Driver) parseStreamingResponse(ctx context.Context, body io.Reader, chu
 }
 
 // isBase64Image checks if the data looks like a base64-encoded image.
+// It performs efficient checks without decoding large amounts of data.
 func isBase64Image(data []byte) bool {
-	// Check for common base64 image prefixes
+	if len(data) == 0 {
+		return false
+	}
+
 	str := string(data)
+
+	// Check for data URI prefix first (most efficient)
 	if strings.HasPrefix(str, "data:image/") {
 		return true
 	}
 
-	// Try to decode first few bytes
-	if len(data) > 100 {
-		decoded, err := base64.StdEncoding.DecodeString(str[:100])
-		if err == nil {
-			// Check for PNG/JPEG magic bytes
-			if len(decoded) > 4 {
-				if decoded[0] == 0x89 && decoded[1] == 'P' && decoded[2] == 'N' && decoded[3] == 'G' {
-					return true
-				}
-				if decoded[0] == 0xFF && decoded[1] == 0xD8 {
-					return true
-				}
-			}
+	// For raw base64, only check if it looks like valid base64
+	// and is long enough to potentially be an image
+	if len(data) < 100 {
+		return false
+	}
+
+	// Check first few characters are valid base64
+	const base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+	for i := 0; i < 20 && i < len(str); i++ {
+		if !strings.ContainsRune(base64Chars, rune(str[i])) {
+			return false
+		}
+	}
+
+	// Try to decode just enough to check magic bytes
+	// Decode 16 bytes (which requires ~22 base64 chars)
+	sample := str
+	if len(sample) > 24 {
+		sample = sample[:24]
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(sample)
+	if err != nil {
+		return false
+	}
+
+	// Check for PNG/JPEG magic bytes
+	if len(decoded) >= 4 {
+		// PNG magic bytes: 89 50 4E 47
+		if decoded[0] == 0x89 && decoded[1] == 'P' && decoded[2] == 'N' && decoded[3] == 'G' {
+			return true
+		}
+		// JPEG magic bytes: FF D8 FF
+		if decoded[0] == 0xFF && decoded[1] == 0xD8 {
+			return true
 		}
 	}
 

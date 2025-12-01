@@ -828,14 +828,25 @@ func mapToEnvSlice(env map[string]string) []string {
 	return result
 }
 
-// stdCopy is a simplified version of Docker's stdcopy for demultiplexing stdout/stderr.
+// stdCopy demultiplexes the Docker stream format used when TTY is disabled.
+//
+// Docker uses a multiplexed stream format where stdout and stderr are combined
+// into a single stream. Each message is prefixed with an 8-byte header:
+//
+// Header format:
+//
+//	[0]      - Stream type: 0=stdin (unused for output), 1=stdout, 2=stderr
+//	[1-3]    - Reserved (always 0)
+//	[4-7]    - Frame size as 32-bit big-endian unsigned integer
+//
+// After the header, the frame data follows with exactly the number of bytes
+// specified in the size field.
+//
+// This function reads frames from src and writes them to the appropriate
+// destination (stdout or stderr) based on the stream type byte.
+//
+// Reference: https://docs.docker.com/engine/api/v1.43/#operation/ContainerAttach
 func stdCopy(stdout, stderr io.Writer, src io.Reader) (written int64, err error) {
-	// Docker multiplexes stdout and stderr in a specific format when TTY is false.
-	// Each frame starts with an 8-byte header:
-	// - byte 0: stream type (0=stdin, 1=stdout, 2=stderr)
-	// - bytes 1-3: reserved
-	// - bytes 4-7: frame size (big endian)
-
 	reader := bufio.NewReader(src)
 	header := make([]byte, 8)
 
@@ -848,22 +859,22 @@ func stdCopy(stdout, stderr io.Writer, src io.Reader) (written int64, err error)
 			return written, err
 		}
 
-		// Get stream type and size
+		// Get stream type and size from header
 		streamType := header[0]
 		size := int64(header[4])<<24 | int64(header[5])<<16 | int64(header[6])<<8 | int64(header[7])
 
-		// Select destination writer
+		// Select destination writer based on stream type
 		var dest io.Writer
 		switch streamType {
-		case 1:
+		case 1: // stdout
 			dest = stdout
-		case 2:
+		case 2: // stderr
 			dest = stderr
-		default:
+		default: // stdin (0) or unknown - discard
 			dest = io.Discard
 		}
 
-		// Copy frame data
+		// Copy frame data to destination
 		n, err := io.CopyN(dest, reader, size)
 		written += n
 		if err != nil {

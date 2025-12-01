@@ -4,6 +4,7 @@
 package protocol
 
 import (
+	"sort"
 	"strings"
 
 	"gobox/pkg/gobox"
@@ -91,14 +92,10 @@ func sortChunksByPosition(data string, chunks []gobox.ExecChunk) []gobox.ExecChu
 		posChunks = append(posChunks, posChunk{pos: pos, chunk: chunk})
 	}
 
-	// Simple bubble sort by position (chunks list is usually small)
-	for i := 0; i < len(posChunks)-1; i++ {
-		for j := 0; j < len(posChunks)-i-1; j++ {
-			if posChunks[j].pos > posChunks[j+1].pos {
-				posChunks[j], posChunks[j+1] = posChunks[j+1], posChunks[j]
-			}
-		}
-	}
+	// Sort by position using standard library (O(n log n))
+	sort.Slice(posChunks, func(i, j int) bool {
+		return posChunks[i].pos < posChunks[j].pos
+	})
 
 	// Extract sorted chunks
 	result := make([]gobox.ExecChunk, len(posChunks))
